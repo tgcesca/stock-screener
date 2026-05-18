@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Screener</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2332;
+    --border: #1e2d3d;
+    --text: #e2e8f0;
+    --text-dim: #8899aa;
+    --accent: #3b82f6;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #eab308;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  .status-dot.paused { background: var(--yellow); animation: none; }
+  .status-dot.error { background: var(--red); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-text { font-size: 12px; color: var(--text-dim); }
+
+  .main { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+  .search-bar {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .search-bar input {
+    flex: 1;
+    max-width: 400px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--text-dim); }
+
+  .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+  .btn-danger:hover { background: rgba(239,68,68,0.1); }
+
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .controls-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .refresh-select {
+    padding: 8px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+
+  .watchlist-count {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 50;
+    display: none;
+  }
+
+  .suggestions.show { display: block; }
+
+  .suggestion-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+
+  .suggestion-item:last-child { border-bottom: none; }
+  .suggestion-item:hover { background: var(--surface2); }
+
+  .suggestion-symbol { font-weight: 600; font-size: 14px; }
+  .suggestion-name { font-size: 12px; color: var(--text-dim); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .search-wrapper { position: relative; flex: 1; max-width: 400px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .card.flash-green { border-color: var(--green); }
+  .card.flash-red { border-color: var(--red); }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+  }
+
+  .card-symbol { font-size: 18px; font-weight: 700; }
+  .card-name { font-size: 12px; color: var(--text-dim); margin-top: 2px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .card-remove {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+  }
+
+  .card-remove:hover { color: var(--red); background: rgba(239,68,68,0.1); }
+
+  .price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .price { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+
+  .change {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  .change.up { color: var(--green); background: rgba(34,197,94,0.1); }
+  .change.down { color: var(--red); background: rgba(239,68,68,0.1); }
+  .change.flat { color: var(--text-dim); background: rgba(136,153,170,0.1); }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+  }
+
+  .metric {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    padding: 4px 0;
+  }
+
+  .metric-label { color: var(--text-dim); }
+  .metric-value { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  .card-footer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: right;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-state h2 {
+    font-size: 20px;
+    color: var(--text);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto; line-height: 1.6; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    z-index: 200;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+  }
+
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.error { border-color: var(--red); color: var(--red); }
+
+  .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .card-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  .market-bar {
+    display: flex;
+    gap: 24px;
+    padding: 8px 32px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    overflow-x: auto;
+  }
+
+  .market-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  .market-item .label { color: var(--text-dim); }
+  .market-item .value { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 768px) {
+    header { padding: 12px 16px; }
+    .main { padding: 16px; }
+    .grid { grid-template-columns: 1fr; }
+    .search-bar { flex-direction: column; }
+    .search-wrapper { max-width: 100%; }
+    .market-bar { padding: 8px 16px; gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Stock<span>Screener</span></div>
+  <div class="header-right">
+    <div class="status-dot" id="statusDot"></div>
+    <span class="status-text" id="statusText">Connecting...</span>
+  </div>
+</header>
+
+<div class="market-bar" id="marketBar">
+  <div class="market-item"><span class="label">Market data via</span><span class="value">Alpha Vantage</span></div>
+</div>
+
+<div class="main">
+  <div class="search-bar">
+    <div class="search-wrapper">
+      <input type="text" id="searchInput" placeholder="Search symbol or company (e.g. AAPL, Tesla)..." autocomplete="off">
+      <div class="suggestions" id="suggestions"></div>
+    </div>
+    <button class="btn btn-primary" id="addBtn" disabled>Add to Watchlist</button>
+  </div>
+
+  <div class="controls">
+    <div class="controls-left">
+      <span class="watchlist-count" id="watchlistCount">0 stocks</span>
+      <select class="refresh-select" id="refreshInterval">
+        <option value="0">Manual refresh</option>
+        <option value="15000">Refresh: 15s</option>
+        <option value="30000" selected>Refresh: 30s</option>
+        <option value="60000">Refresh: 60s</option>
+      </select>
+      <button class="btn btn-secondary" id="refreshBtn">Refresh Now</button>
+    </div>
+    <button class="btn btn-danger" id="clearBtn" style="display:none">Clear All</button>
+  </div>
+
+  <div class="grid" id="stockGrid"></div>
+
+  <div class="empty-state" id="emptyState">
+    <h2>Your watchlist is empty</h2>
+    <p>Search for a stock symbol above and add it to your watchlist to start tracking prices in real time.</p>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API_KEY = 'NPC37V2GKL18PH4G';
+const BASE = 'https://www.alphavantage.co/query';
+
+const state = {
+  watchlist: JSON.parse(localStorage.getItem('sv_watchlist') || '[]'),
+  quotes: {},
+  searchResult: null,
+  refreshTimer: null,
+  lastRefresh: null,
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+function toast(msg, isError = false) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+function setStatus(type, text) {
+  const dot = $('#statusDot');
+  dot.className = 'status-dot' + (type === 'ok' ? '' : type === 'paused' ? ' paused' : ' error');
+  $('#statusText').textContent = text;
+}
+
+async function apiCall(fn, params = {}) {
+  const url = new URL(BASE);
+  url.searchParams.set('function', fn);
+  url.searchParams.set('apikey', API_KEY);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+
+  if (data['Note'] || data['Information']) {
+    throw new Error('API rate limit reached. Please wait a moment.');
+  }
+
+  return data;
+}
+
+let searchTimeout = null;
+$('#searchInput').addEventListener('input', (e) => {
+  const q = e.target.value.trim();
+  if (searchTimeout) clearTimeout(searchTimeout);
+  if (q.length < 1) {
+    $('#suggestions').className = 'suggestions';
+    $('#addBtn').disabled = true;
+    state.searchResult = null;
+    return;
+  }
+  searchTimeout = setTimeout(() => searchSymbol(q), 350);
+});
+
+$('#searchInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && state.searchResult) addStock();
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrapper')) {
+    $('#suggestions').className = 'suggestions';
+  }
+});
+
+async function searchSymbol(query) {
+  try {
+    const data = await apiCall('SYMBOL_SEARCH', { keywords: query });
+    const matches = data.bestMatches || [];
+    const box = $('#suggestions');
+    box.innerHTML = '';
+
+    if (matches.length === 0) {
+      box.innerHTML = '<div style="padding:12px 16px;color:var(--text-dim);font-size:13px;">No results found</div>';
+      box.className = 'suggestions show';
+      return;
+    }
+
+    matches.slice(0, 6).forEach((m) => {
+      const sym = m['1. symbol'];
+      const name = m['2. name'];
+      const type = m['3. type'];
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.innerHTML = `
+        <div>
+          <div class="suggestion-symbol">${sym}</div>
+          <div class="suggestion-name">${name}</div>
+        </div>
+        <span style="font-size:11px;color:var(--text-dim)">${type}</span>
+      `;
+      div.addEventListener('click', () => {
+        state.searchResult = { symbol: sym, name };
+        $('#searchInput').value = sym;
+        box.className = 'suggestions';
+        $('#addBtn').disabled = false;
+      });
+      box.appendChild(div);
+    });
+    box.className = 'suggestions show';
+  } catch (err) {
+    toast(err.message, true);
+  }
+}
+
+function addStock() {
+  if (!state.searchResult) return;
+  const { symbol, name } = state.searchResult;
+
+  if (state.watchlist.find((s) => s.symbol === symbol)) {
+    toast(`${symbol} is already in your watchlist`);
+    return;
+  }
+
+  state.watchlist.push({ symbol, name });
+  saveWatchlist();
+  state.searchResult = null;
+  $('#searchInput').value = '';
+  $('#addBtn').disabled = true;
+  renderGrid();
+  fetchQuote(symbol);
+  toast(`${symbol} added to watchlist`);
+}
+
+$('#addBtn').addEventListener('click', addStock);
+
+function removeStock(symbol) {
+  state.watchlist = state.watchlist.filter((s) => s.symbol !== symbol);
+  delete state.quotes[symbol];
+  saveWatchlist();
+  renderGrid();
+  toast(`${symbol} removed`);
+}
+
+$('#clearBtn').addEventListener('click', () => {
+  state.watchlist = [];
+  state.quotes = {};
+  saveWatchlist();
+  renderGrid();
+  toast('Watchlist cleared');
+});
+
+function saveWatchlist() {
+  localStorage.setItem('sv_watchlist', JSON.stringify(state.watchlist));
+}
+
+async function fetchQuote(symbol) {
+  try {
+    const data = await apiCall('GLOBAL_QUOTE', { symbol });
+    const q = data['Global Quote'];
+    if (!q || !q['05. price']) return;
+
+    const prev = state.quotes[symbol];
+    const price = parseFloat(q['05. price']);
+
+    state.quotes[symbol] = {
+      price,
+      open: parseFloat(q['02. open']),
+      high: parseFloat(q['03. high']),
+      low: parseFloat(q['04. low']),
+      volume: parseInt(q['06. volume']),
+      prevClose: parseFloat(q['08. previous close']),
+      change: parseFloat(q['09. change']),
+      changePct: q['10. change percent'],
+      latestDay: q['07. latest trading day'],
+      direction: prev ? (price > prev.price ? 'up' : price < prev.price ? 'down' : 'flat') : 'flat',
+    };
+
+    renderCard(symbol);
+  } catch (err) {
+    if (err.message.includes('rate limit')) {
+      setStatus('paused', 'Rate limited — pausing');
+      toast('Rate limit hit. Requests paused briefly.', true);
+    }
+  }
+}
+
+async function refreshAll() {
+  if (state.watchlist.length === 0) return;
+  setStatus('ok', 'Updating...');
+
+  for (let i = 0; i < state.watchlist.length; i++) {
+    await fetchQuote(state.watchlist[i].symbol);
+    if (i < state.watchlist.length - 1) {
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  }
+
+  state.lastRefresh = new Date();
+  setStatus('ok', `Live · Updated ${formatTime(state.lastRefresh)}`);
+}
+
+$('#refreshBtn').addEventListener('click', refreshAll);
+
+$('#refreshInterval').addEventListener('change', (e) => {
+  setupAutoRefresh(parseInt(e.target.value));
+});
+
+function setupAutoRefresh(ms) {
+  if (state.refreshTimer) clearInterval(state.refreshTimer);
+  if (ms === 0) {
+    setStatus('paused', 'Auto-refresh off');
+    return;
+  }
+  state.refreshTimer = setInterval(refreshAll, ms);
+  setStatus('ok', 'Live');
+}
+
+function formatNum(n) {
+  if (n === undefined || n === null || isNaN(n)) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatVol(n) {
+  if (!n) return '—';
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'K';
+  return n.toLocaleString();
+}
+
+function formatTime(d) {
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function renderGrid() {
+  const grid = $('#stockGrid');
+  const empty = $('#emptyState');
+  const clearBtn = $('#clearBtn');
+  $('#watchlistCount').textContent = `${state.watchlist.length} stock${state.watchlist.length !== 1 ? 's' : ''}`;
+
+  if (state.watchlist.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    clearBtn.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  clearBtn.style.display = 'inline-flex';
+
+  const existing = new Set();
+  state.watchlist.forEach((s) => existing.add(s.symbol));
+
+  grid.querySelectorAll('.card').forEach((card) => {
+    if (!existing.has(card.dataset.symbol)) card.remove();
+  });
+
+  state.watchlist.forEach((s) => {
+    if (!grid.querySelector(`[data-symbol="${s.symbol}"]`)) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.symbol = s.symbol;
+      card.innerHTML = `<div class="card-loading"><span class="loading-spinner"></span> Loading ${s.symbol}...</div>`;
+      grid.appendChild(card);
+    }
+    if (state.quotes[s.symbol]) renderCard(s.symbol);
+  });
+}
+
+function renderCard(symbol) {
+  const card = $(`[data-symbol="${symbol}"]`);
+  if (!card) return;
+
+  const stock = state.watchlist.find((s) => s.symbol === symbol);
+  const q = state.quotes[symbol];
+  if (!q) return;
+
+  const dir = q.change >= 0 ? (q.change > 0 ? 'up' : 'flat') : 'down';
+  const sign = q.change >= 0 ? '+' : '';
+  const range = (q.high && q.low) ? `${formatNum(q.low)} — ${formatNum(q.high)}` : '—';
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div class="card-symbol">${symbol}</div>
+        <div class="card-name">${stock?.name || ''}</div>
+      </div>
+      <button class="card-remove" onclick="removeStock('${symbol}')" title="Remove">&times;</button>
+    </div>
+    <div class="price-row">
+      <span class="price">$${formatNum(q.price)}</span>
+      <span class="change ${dir}">${sign}${formatNum(q.change)} (${q.changePct})</span>
+    </div>
+    <div class="metrics">
+      <div class="metric"><span class="metric-label">Open</span><span class="metric-value">$${formatNum(q.open)}</span></div>
+      <div class="metric"><span class="metric-label">Prev Close</span><span class="metric-value">$${formatNum(q.prevClose)}</span></div>
+      <div class="metric"><span class="metric-label">Day Range</span><span class="metric-value">${range}</span></div>
+      <div class="metric"><span class="metric-label">Volume</span><span class="metric-value">${formatVol(q.volume)}</span></div>
+    </div>
+    <div class="card-footer">${q.latestDay || ''}</div>
+  `;
+
+  if (q.direction === 'up') flashCard(card, 'flash-green');
+  else if (q.direction === 'down') flashCard(card, 'flash-red');
+}
+
+function flashCard(card, cls) {
+  card.classList.add(cls);
+  setTimeout(() => card.classList.remove(cls), 800);
+}
+
+// Init
+renderGrid();
+setupAutoRefresh(30000);
+if (state.watchlist.length > 0) refreshAll();
+else setStatus('paused', 'Add stocks to begin');
+</script>
+
+</body>
+</html>
